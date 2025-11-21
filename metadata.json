@@ -1,0 +1,5 @@
+{
+  "name": "PocketBank AI",
+  "description": "A mobile-first virtual bank and finance manager. Set your monthly budget, track daily expenses, and get AI-powered financial insights using Gemini.",
+  "requestFramePermissions": []
+}
