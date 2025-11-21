@@ -2,8 +2,8 @@
 import express from 'express';
 import http from 'http';
 import { Server } from 'socket.io';
-import db from './database';
-import { Transaction } from '../types'; // Assuming types.ts is in the root
+import db from './mockDatabase.js';
+import { Transaction } from './types';
 
 const app = express();
 const server = http.createServer(app);
