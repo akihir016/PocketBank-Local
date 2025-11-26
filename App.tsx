@@ -6,7 +6,7 @@ import BankCard from './components/BankCard';
 import TransactionList from './components/TransactionList';
 import Charts from './components/Charts';
 import AdvisorChat from './components/AdvisorChat';
-import { BudgetState, EXPENSE_CATEGORIES } from './types';
+import { BudgetState, EXPENSE_CATEGORIES } from './server/types';
 import * as api from './services/apiService';
 
 const App: React.FC = () => {

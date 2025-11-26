@@ -2,8 +2,9 @@
 import express from 'express';
 import http from 'http';
 import { Server } from 'socket.io';
-import db from './database';
-import { Transaction } from '../types'; // Assuming types.ts is in the root
+import { connectToMongo } from './mongoConnection.js';
+import * as db from './mongoDatabase.js';
+import { Transaction } from './types';
 
 const app = express();
 const server = http.createServer(app);
@@ -18,28 +19,19 @@ app.use(express.json());
 const users = new Map<string, string>();
 
 // ===== Helper Functions =====
-function getAppState() {
-    const budget = db.prepare('SELECT * FROM budget WHERE id = 1').get();
-    const transactions = db.prepare('SELECT * FROM transactions ORDER BY date DESC').all();
-    return {
-        ...(budget as any),
-        transactions,
-    };
-}
-
-function broadcastState() {
-    const state = getAppState();
+async function broadcastState() {
+    const state = await db.getAppState();
     io.emit('banking_update', state);
 }
 
 
 // ===== API Endpoints for Banking =====
 
-app.get('/api/state', (req, res) => {
-    res.json(getAppState());
+app.get('/api/state', async (req, res) => {
+    res.json(await db.getAppState());
 });
 
-app.post('/api/transactions', (req, res) => {
+app.post('/api/transactions', async (req, res) => {
     const { amount, description, category, type } = req.body;
     if (!amount || !description || !category || !type) {
         return res.status(400).json({ message: 'Missing required fields' });
@@ -54,18 +46,16 @@ app.post('/api/transactions', (req, res) => {
         type,
     };
 
-    db.prepare(
-        'INSERT INTO transactions (id, amount, description, category, date, type) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run(newTransaction.id, newTransaction.amount, newTransaction.description, newTransaction.category, newTransaction.date, newTransaction.type);
+    await db.addTransaction(newTransaction);
 
     const balanceChange = type === 'expense' ? -newTransaction.amount : newTransaction.amount;
-    db.prepare('UPDATE budget SET currentBalance = currentBalance + ? WHERE id = 1').run(balanceChange);
+    await db.updateBalance(balanceChange);
     
-    broadcastState();
+    await broadcastState();
     res.status(201).json(newTransaction);
 });
 
-app.post('/api/topup', (req, res) => {
+app.post('/api/topup', async (req, res) => {
     const { amount } = req.body;
     const val = parseFloat(amount);
     if (isNaN(val) || val <= 0) {
@@ -81,40 +71,33 @@ app.post('/api/topup', (req, res) => {
         type: 'deposit'
     };
 
-    db.prepare(
-        'INSERT INTO transactions (id, amount, description, category, date, type) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run(newTransaction.id, newTransaction.amount, newTransaction.description, newTransaction.category, newTransaction.date, newTransaction.type);
-
-    db.prepare('UPDATE budget SET currentBalance = currentBalance + ? WHERE id = 1').run(val);
+    await db.addTransaction(newTransaction);
+    await db.updateBalance(val);
     
-    broadcastState();
+    await broadcastState();
     res.status(201).json(newTransaction);
 });
 
-app.put('/api/budget', (req, res) => {
+app.put('/api/budget', async (req, res) => {
     const { newBudgetInput, newCurrencyInput } = req.body;
     const val = parseFloat(newBudgetInput);
      if (isNaN(val) || val <= 0) {
         return res.status(400).json({ message: 'Invalid budget amount' });
     }
 
-    const oldBudget = db.prepare('SELECT initialBudget FROM budget WHERE id = 1').get() as { initialBudget: number };
+    const oldBudget = await db.getInitialBudget();
     const diff = val - oldBudget.initialBudget;
 
-    db.prepare('UPDATE budget SET initialBudget = ?, currency = ?, currentBalance = currentBalance + ? WHERE id = 1').run(val, newCurrencyInput || '$', diff);
+    await db.updateBudget(val, newCurrencyInput || '$', diff);
 
-    broadcastState();
-    res.status(200).json(getAppState());
+    await broadcastState();
+    res.status(200).json(await db.getAppState());
 });
 
-app.post('/api/reset', (req, res) => {
-    const INITIAL_BUDGET = 2000;
-    const CURRENCY = '$';
+app.post('/api/reset', async (req, res) => {
+    await db.resetApp();
     
-    db.exec('DELETE FROM transactions');
-    db.prepare('UPDATE budget SET initialBudget = ?, currentBalance = ?, currency = ? WHERE id = 1').run(INITIAL_BUDGET, INITIAL_BUDGET, CURRENCY);
-    
-    broadcastState();
+    await broadcastState();
     res.status(200).json({ message: 'Application reset' });
 });
 
@@ -166,6 +149,9 @@ io.on('connection', (socket) => {
 
 // ===== Server Start =====
 const PORT = process.env.PORT || 3001;
-server.listen(PORT, () => {
-  console.log(`Server listening on port ${PORT}`);
+
+connectToMongo().then(() => {
+    server.listen(PORT, () => {
+        console.log(`Server listening on port ${PORT}`);
+    });
 });

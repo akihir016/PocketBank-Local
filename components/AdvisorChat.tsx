@@ -126,7 +126,7 @@ const AdvisorChat: React.FC<AdvisorChatProps> = ({ onClose }) => {
             <X className="w-5 h-5 text-gray-500" />
           </button>
           <h2 className="text-xl sm:text-2xl font-bold text-center mb-4">Enter Your Name</h2>
-          <div className.space-y-4">
+          <div className="space-y-4">
             <input
               type="text"
               value={name}
